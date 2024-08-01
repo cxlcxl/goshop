@@ -8,9 +8,9 @@ import (
 	"gorm.io/gorm"
 	"log"
 	"net/http"
-	"silentcxl/go-shop/util/connect_mysql"
 	"silentcxl/go-shop/util/redis_cmd"
 	"strconv"
+	"time"
 )
 
 var (
@@ -20,16 +20,16 @@ var (
 )
 
 func main() {
-	db, _ = connect_mysql.ConnectMysql(dsn)
+	//db, _ = connect_mysql.ConnectMysql(dsn)
 	redisCmd = redis_cmd.NewRedisCmd("127.0.0.1:6379")
 	// 模拟预热
-	loadGoodsInCache()
+	//loadGoodsInCache()
 
 	engine := gin.Default()
 
-	engine.POST("/goods", ms())
+	engine.Use(FlowRestriction).POST("/goods", ms())
 
-	engine.Run(":9999")
+	engine.Run(":23568")
 }
 
 type Goods struct {
@@ -98,12 +98,26 @@ func loadGoodsInCache() {
 
 // FlowRestriction 流量限制
 func FlowRestriction(ctx *gin.Context) {
-	// 使用redis实现一个tcp的滑动窗口限流
-	redisCmd.Incr(ctx, "ms_goods:flow_restriction")
-	if redisCmd.Get(ctx, "ms_goods:flow_restriction").Val() > "100" {
+	// 使用redis实现一个tcp的滑动窗口限流，要求每分钟最多可以处理300个请求
+	flowRestrictionKey := "flow_restriction:"
+	go clearUp(ctx, flowRestrictionKey)
+
+	if redisCmd.Incr(ctx, flowRestrictionKey+ctx.ClientIP()).Val() > 300 {
 		ctx.JSON(http.StatusTooManyRequests, gin.H{"msg": "流量限制"})
 		ctx.Abort()
 		return
 	}
-	ctx.Next()
+}
+
+func clearUp(ctx *gin.Context, flowRestrictionKey string) {
+	ticker := time.NewTicker(time.Second * 15)
+	for range ticker.C {
+		keys := redisCmd.Keys(ctx, flowRestrictionKey+"*").Val()
+		for _, key := range keys {
+			val := redisCmd.TTL(ctx, key).Val()
+			if val.Seconds() < 0 {
+				redisCmd.Del(ctx, key)
+			}
+		}
+	}
 }
