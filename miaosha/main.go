@@ -8,22 +8,24 @@ import (
 	"gorm.io/gorm"
 	"log"
 	"net/http"
+	"silentcxl/go-shop/conf"
+	_ "silentcxl/go-shop/conf"
+	"silentcxl/go-shop/util/connect_mysql"
 	"silentcxl/go-shop/util/redis_cmd"
 	"strconv"
 	"time"
 )
 
 var (
-	dsn      = "root:pass@tcp(127.0.0.1:3306)/go_shop?charset=utf8mb4&parseTime=True&loc=Local"
 	db       *gorm.DB
 	redisCmd redis.Cmdable
 )
 
 func main() {
-	//db, _ = connect_mysql.ConnectMysql(dsn)
-	redisCmd = redis_cmd.NewRedisCmd("127.0.0.1:6379")
+	db, _ = connect_mysql.ConnectMysql(conf.ConfigData.Ms.MysqlDsn)
+	redisCmd = redis_cmd.NewRedisCmd(conf.ConfigData.Ms.Redis)
 	// 模拟预热
-	//loadGoodsInCache()
+	loadGoodsInCache()
 
 	engine := gin.Default()
 
@@ -107,6 +109,8 @@ func FlowRestriction(ctx *gin.Context) {
 		ctx.Abort()
 		return
 	}
+
+	ctx.Next()
 }
 
 func clearUp(ctx *gin.Context, flowRestrictionKey string) {
