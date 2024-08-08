@@ -29,7 +29,7 @@ func main() {
 
 	engine := gin.Default()
 
-	engine.Use(FlowRestriction).POST("/goods", ms())
+	engine.POST("/goods", ms())
 
 	engine.Run(":23568")
 }
@@ -62,7 +62,6 @@ func ms() gin.HandlerFunc {
 		if goodsNum == 0 {
 			log.Fatal("商品没有库存了", goods.GoodsId)
 		}
-
 		//db.Table("")
 	}
 }
