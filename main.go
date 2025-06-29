@@ -3,30 +3,18 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/go-redis/redis/v8"
 	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm"
 	"log"
 	_ "silentcxl/go-shop/conf"
 	"silentcxl/go-shop/util/connect_mysql"
+	"strconv"
 	"time"
 )
 
 var (
-	db       *gorm.DB
-	redisCmd redis.Cmdable
+	db *gorm.DB
 )
-
-type MsgParam struct {
-	Cursor   int64 `form:"cursor"`
-	PageSize int   `form:"page_size"`
-}
-type MsgBody struct {
-	ID         int64  `json:"id"`
-	MainUserId int64  `json:"main_user_id"`
-	GroupName  string `json:"group_name"`
-	Message    string `json:"message"`
-}
 
 type CallbackItem struct {
 	Callback  string `json:"callback"`
@@ -48,6 +36,10 @@ type AdReq struct {
 }
 
 func main() {
+	ks()
+}
+
+func tt() {
 	var err error
 	db, err = connect_mysql.ConnectMysql("cl_readOnly:Chuangliang@2023@mysql+tcp(mysql23e742b714ab.rds.ivolces.com:3306)/chuangliang_cid_cpa?charset=utf8mb4&parseTime=True&loc=Local")
 	if err != nil {
@@ -183,6 +175,107 @@ func main() {
 			}
 			fmt.Println("请求参数: ", string(marshal))
 			post, err := resty.New().R().SetBody(marshal).Post("https://analytics.oceanengine.com/api/v2/conversion")
+			if err != nil {
+				fmt.Println("请求失败:", err)
+				continue
+			}
+			fmt.Println(post.StatusCode(), post.String())
+		}
+		fmt.Println(clicks)
+	}
+}
+
+func ks() {
+	var err error
+	db, err = connect_mysql.ConnectMysql("cl_readOnly:Chuangliang@2023@mysql+tcp(mysql23e742b714ab.rds.ivolces.com:3306)/chuangliang_cid_cpa?charset=utf8mb4&parseTime=True&loc=Local")
+	if err != nil {
+		log.Fatal("数据库连接失败", err)
+		return
+	}
+
+	//engine := gin.Default()
+	//
+	//engine.Use(func(c *gin.Context) {
+	//	method := c.Request.Method
+	//	c.Header("Access-Control-Allow-Origin", "*")
+	//	c.Header("Access-Control-Allow-Headers", "Access-Control-Allow-Headers,Authorization,User-Agent, Keep-Alive, Content-Type, X-Requested-With,X-CSRF-Token,AccessToken,Token")
+	//	c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, PUT, PATCH, OPTIONS")
+	//	c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Content-Type")
+	//	c.Header("Access-Control-Allow-Credentials", "true")
+	//
+	//	// 放行所有OPTIONS方法
+	//	if method == "OPTIONS" {
+	//		c.AbortWithStatus(http.StatusAccepted)
+	//	}
+	//	c.Next()
+	//})
+	//
+	//engine.GET("/api/messages", func(context *gin.Context) {
+	//	//var params MsgParam
+	//	//if err = context.ShouldBindQuery(&params); err != nil {
+	//	//	context.JSON(http.StatusBadRequest, gin.H{"msg": "参数错误: " + err.Error(), "data": nil})
+	//	//	context.Abort()
+	//	//	return
+	//	//}
+	//	//var messages []MsgBody
+	//	//pageSie := params.PageSize
+	//	//if pageSie > 100 {
+	//	//	pageSie = 100
+	//	//}
+	//	//err = db.Table("notify_wechat_msg").Where("id > ?", params.Cursor).Limit(pageSie).Find(&messages).Error
+	//	//if err != nil {
+	//	//	context.JSON(http.StatusBadRequest, gin.H{"msg": "查询失败: " + err.Error(), "data": nil})
+	//	//	context.Abort()
+	//	//	return
+	//	//}
+	//
+	//	//context.JSON(http.StatusOK, gin.H{"data": 1, "msg": "OK"})
+	//	log.Println("跳转")
+	//
+	//	context.Redirect(http.StatusFound, "https://www.baidu.com")
+	//})
+	//engine.POST("/api/stop", func(context *gin.Context) {
+	//
+	//})
+	//
+	//engine.Run(":8989")
+
+	adIds := map[int64]int{
+		11730684110: 12,
+		11730678752: 12,
+	}
+	//adIdsList := make([]int64, 0)
+	//for adId, _ := range adIds {
+	//	adIdsList = append(adIdsList, adId)
+	//}
+	d := time.Now()
+	date := time.Date(d.Year(), d.Month(), d.Day(), 11, 10, 0, 0, time.Local)
+	//db.Table("monitor_links").
+	//	Where("ad_id in (?)", adIdsList).
+	//	Where("click_time >= ?", date.Unix()).
+	//	Limit(num).
+	//	Find(&clicks)
+
+	for adId, num := range adIds {
+		var clicks []*CallbackItem
+		db.Debug().Table("cpa_ad_click_ks").
+			Where("ad_id = ?", adId).
+			Where("click_time >= ?", date.Unix()).
+			Limit(num).
+			Find(&clicks)
+
+		if len(clicks) < num {
+			fmt.Println(adId, "点击不足: ", num, "，只查到: ", len(clicks))
+		}
+
+		for _, click := range clicks {
+			queryParams := map[string]string{
+				"event_type": "84",
+				"callback":   click.Callback,
+				"event_time": strconv.Itoa(int(click.ClickTime * 1000)),
+			}
+			fmt.Println("请求参数: ", queryParams)
+			post, err := resty.New().R().SetQueryParams(queryParams).Get("http://ad.partner.gifshow.com/track/activate")
 			if err != nil {
 				fmt.Println("请求失败:", err)
 				continue
